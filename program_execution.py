@@ -1,3 +1,5 @@
+import argparse
+import json
 import pandas as pd
 import torch
 from tqdm import tqdm
@@ -6,19 +8,24 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 def load_dataset(path):
-    return pd.read_json(path, lines=True, orient="records")
+    with open(path, 'r') as file:
+        data = json.load(file)
+
+    return pd.DataFrame(data)
 
 
 class T5QuestionAnswering:
     def __init__(self, model_name):
         self.model_name = model_name
-        self.model = model = AutoModelForSeq2SeqLM.from_pretrained(model_name, device_map="auto")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name, device_map="auto", torch_dtype=torch.bfloat16)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     
     def generate(self, input_string, **generator_args):
         device = self.model.device
         input_ids = self.tokenizer.encode(input_string, return_tensors="pt").to(device)
+        input_ids = input_ids[-512:]  # Get the last 512 tokens since Flan T5 has a max length of 512
+
         with torch.no_grad():
             res = self.model.generate(input_ids, **generator_args)
         return self.tokenizer.batch_decode(res, skip_special_tokens=True)
@@ -49,9 +56,9 @@ class ProgramExecution:
     def parse_verify_command(self, command, variable_map):
         return_var, tmp = command.split('= Verify')
         return_var = return_var.strip()
-        # claim = tmp.replace("\")", "").strip()
 
-        p1 = re.compile(f'Verify\([f]?\"(.*)\"\)', re.S)
+        # p1 = re.compile(f'Verify\([f]?\"(.*)\"\)', re.S)
+        p1 = re.compile(f'Verify\\([f]?\"(.*)\"\\)', re.S)
         matching = re.findall(p1, command)
         claim = matching[0] if len(matching)>0 else tmp
 
@@ -59,6 +66,8 @@ class ProgramExecution:
         for variable_name, variable_value in variable_map.items():
             replace_var = "{" + str(variable_name) + "}"
             if claim.find(replace_var) >=0:
+                # TODO: check variable_value for sample 205
+                variable_value = str(variable_value).lower()
                 claim = claim.replace(replace_var, variable_value)
 
         return return_var, claim
@@ -67,9 +76,9 @@ class ProgramExecution:
     def parse_question_command(self, command, variable_map):
         return_var, tmp = command.split('= Question')
         return_var = return_var.strip()
-        # question = tmp.replace("\")", "").strip()
 
-        p1 = re.compile(f'Question\([f]?\"(.*)\"\)', re.S)
+        # p1 = re.compile(f'Question\([f]?\"(.*)\"\)', re.S)
+        p1 = re.compile(f'Question\\([f]?\"(.*)\"\\)', re.S)
         matching = re.findall(p1, command)
         question = matching[0] if len(matching)>0 else tmp
 
@@ -93,6 +102,9 @@ class ProgramExecution:
         for argument in arguments:
             if argument in variable_map:
                 final_label = variable_map[argument] and final_label
+            elif argument.startswith("not"):  # TODO: check this for sample 236, 263, 478, 535, 628, 876
+                argument = argument.replace("not", "").strip()
+                final_label = (not variable_map[argument]) and final_label
             else:
                 print(f"Alert!!! wrong argument: {argument}")
         
@@ -101,7 +113,14 @@ class ProgramExecution:
 
     def map_direct_answer_to_label(self, predict):
         predict = predict.lower().strip()
-        label_map = {'true': True, 'false': False, 'yes': True, 'no': False, "it's impossible to say": False}
+        label_map = {
+            'true': True, 
+            'false': False, 
+            'yes': True, 
+            'no': False, 
+            "it's impossible to say": False,
+            'unanswerable': False,  # TODO: check this for sample 590
+        }
         if predict in label_map:
             return label_map[predict]
         else:
@@ -110,11 +129,12 @@ class ProgramExecution:
 
     def parse_program(self, id, program, evidence):
         final_answer = None
-        
-        variable_map = {}   
+        variable_map = {}
+
         for command in program:
+            command = command.replace("= predict", "= Predict")  # fix bug for llama 3.1 8B
+
             c_type = self.get_command_type(command)
-            
 
             if c_type == "VERIFY":
                 return_var, claim = self.parse_verify_command(command, variable_map)
@@ -127,7 +147,7 @@ class ProgramExecution:
             elif c_type == "PREDICT":
                 final_answer = self.derive_final_answer(command, variable_map)
 
-        return final_answer
+        return final_answer, variable_map
 
 
     def get_command_type(self, command):
@@ -138,6 +158,7 @@ class ProgramExecution:
         elif command.find('= Question')>=0:
             return "QUESTION"
         else:
+            print(f"Alert!!! wrong command type: {command}")
             return "UNKNOWN"
 
 
@@ -147,31 +168,52 @@ class ProgramExecution:
 
         results = []
         for _, sample in tqdm(reasoning_program_df.iterrows()):
-            program = sample['predicted_programs'][0][0]
+            program = sample['predicted_programs'][2:]
             evidence = raw_df[raw_df['id'] == sample['id']]['evidence'].values[0]
 
             # execute program
-            sample_prediction = self.parse_program(sample['id'], program, evidence)
+            sample_prediction, variable_map = self.parse_program(sample['id'], program, evidence)
 
             results.append({'id': sample['id'], 
                             'claim': sample['claim'],
                             'gold': sample['gold'], 
-                            'prediction': 'supports' if sample_prediction == True else 'refutes'})
+                            'prediction': 'supports' if sample_prediction == True else 'refutes',
+                            'reasoning_variable_map': variable_map})
 
         results_df = pd.DataFrame(results)
-        results_df.to_json(self.args.output_path, orient='records', lines=True)
+        results_df.to_json(self.args.output_path, orient='records')
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        '--reasoning_program_path', 
+        type=str,
+        help='Path to generated reasoning programs file'
+    )
+    parser.add_argument(
+        '--dataset_path', 
+        type=str,
+        help='Path to dataset file that contains evidences'
+    )
+    parser.add_argument(
+        '--output_path', 
+        type=str,
+        help='Path to save the output file'
+    )
+    parser.add_argument(
+        '--QA_model_name', 
+        type=str,
+        default='google/flan-t5-xl',
+        help='Name of the QA model'
+    )
+
+    args = parser.parse_args()
+    return args
 
 
 if __name__ == '__main__':
-    #TODO: Remove
-    from dotted_dict import DottedDict
-    args = DottedDict({
-        "reasoning_program_path": "samples.jsonl",
-        "dataset_path": "dev.jsonl",
-        "output_path": "hehe.jsonl",
-        "QA_model_name": "google/flan-t5-large"
-    })
-    
-
+    args = parse_args()
     program_execution = ProgramExecution(args)
     program_execution.execute_on_dataset()
