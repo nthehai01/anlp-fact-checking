@@ -168,7 +168,7 @@ class ProgramExecution:
 
         results = []
         for _, sample in tqdm(reasoning_program_df.iterrows()):
-            program = sample['predicted_programs'][2:]
+            program = sample['predicted_programs'][0]
             evidence = raw_df[raw_df['id'] == sample['id']]['evidence'].values[0]
 
             # execute program
