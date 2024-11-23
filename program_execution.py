@@ -192,7 +192,6 @@ class ProgramExecution:
                 (bool): Final label
             """
 
-
         final_label = True
 
         command = command.replace('label =', '').strip()
@@ -240,6 +239,9 @@ class ProgramExecution:
 
     def parse_program(self, program, evidence):
         """ Parse the reasoning program into commands and execute them one by one.
+
+            if there is any error while parsing the command, the returned verdict
+            is always TRUE.
             
             Args:
                 program (list): List of commands
@@ -330,6 +332,8 @@ class ProgramExecution:
 
         results_df = pd.DataFrame(results)
         results_df.to_json(self.args.output_path, orient='records')
+
+        print(f"Results saved to {self.args.output_path}")
 
 
 def parse_args():
