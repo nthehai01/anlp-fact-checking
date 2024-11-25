@@ -8,7 +8,7 @@ from prompts import Prompt_Loader
 from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria
 
 # token to access Llama models on HF
-access_token = "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"
+# access_token = "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"
 
 
 class MyStoppingCriteria(StoppingCriteria):
@@ -57,11 +57,12 @@ class Reasoning_Program_Generator:
         self.model_name = args.model_name
         self.save_path = args.save_path
         self.num_programs_per_example = args.num_programs_per_example
+        self.access_token = args.api_key
         
-        self.gen_model = AutoModelForCausalLM.from_pretrained(args.model_name, device_map="auto", torch_dtype=torch.float16, attn_implementation='flash_attention_2')
+        self.gen_model = AutoModelForCausalLM.from_pretrained(args.model_name, token=self.access_token, device_map="auto", torch_dtype=torch.float16)
         self.gen_model.generation_config.cache_implementation = "static"
 
-        self.tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(args.model_name, token=self.access_token)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.prompt_loader = Prompt_Loader()
@@ -93,7 +94,7 @@ class Reasoning_Program_Generator:
             os.makedirs(self.save_path)
 
         # load dataset
-        with open(os.path.join(self.data_path, self.dataset_name, 'claims', 'dev.json'), 'r') as f:
+        with open(self.data_path, 'r') as f:
             raw_dataset = json.load(f)
         
         raw_dataset = raw_dataset if self.args.num_eval_samples < 0 else raw_dataset[:self.args.num_eval_samples]
@@ -124,13 +125,13 @@ class Reasoning_Program_Generator:
                 # create prompt
                 full_prompts = [self.prompt_loader.prompt_construction(example['claim'], self.dataset_name) for example in chunk]
                 for sample, full_prompt in zip(chunk, full_prompts):
-                    try:
-                        model_input = self.tokenizer(full_prompt, return_tensors="pt").to("cuda")
-                        generated_ids = self.gen_model.generate(**model_input, max_new_tokens=args.max_new_tokens, temperature=temperature, stopping_criteria=MyStoppingCriteria(args.stop_words, full_prompt, self.tokenizer))
-                        output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-                        self.update_results(sample, output)
-                    except:
-                        print('Error in generating reasoning programs for example: ', sample['id'])
+                # try:
+                    model_input = self.tokenizer(full_prompt, return_tensors="pt").to("cuda")
+                    generated_ids = self.gen_model.generate(**model_input, max_new_tokens=args.max_new_tokens, temperature=temperature, stopping_criteria=MyStoppingCriteria(args.stop_words, full_prompt, self.tokenizer))
+                    output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+                    self.update_results(sample, output)
+		        # except:
+                    # print('Error in generating reasoning programs for example: ', sample['id'])
 
         print(f"Generated {len(result_dict)} examples.")
         # create outputs
