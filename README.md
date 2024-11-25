@@ -4,7 +4,7 @@
 Group 7:
 - 2220409: Dang Hoang Anh
 - 2410407: The-Hai NGUYEN
-- 2410408: Tan-Minh NGUYEN
+- 2410408: NGUYEN Tan Minh
 
 
 ## Re-implementation
@@ -20,16 +20,16 @@ There are two main steps to use the code: Reasoning Program Generation and Reaso
 #### Reasoning Program Generation
 Run the following command to generate the reasoning program:
 ```bash
-python ./models/program_generator.py \ 
+python program_generator.py \
     --data_path ./datasets \
     --dataset_name "HOVER-4" \
     --num_programs_per_example "1" \
     --model_name meta-llama/Llama-3.1-8B-Instruct\
     --num_eval_samples "1039" \
-    --api_key "Your OpenAI API Key" \
+    --api_key "Your HF access token to model" \
     --save_path ./results/programs
 ```
-The default setting for program_generator is 
+The default setting for program_generator is `meta-llama/Llama-3.1-8B-Instruct` model to generate reasoning programs from 1039 samples HOVER 4-hop dataset. The number of different reasoning paths is 1. 
 
 #### Reasoning Program Execution
 Run the following command to execute the reasoning program:
