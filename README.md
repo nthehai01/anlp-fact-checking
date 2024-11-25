@@ -18,7 +18,10 @@ pip install -r requirements.txt
 There are two main steps to use the code: Reasoning Program Generation and Reasoning Program Execution.
 
 #### Reasoning Program Generation
-abc
+Run the following command to generate the reasoning program:
+```bash
+bash program_generator.py
+```
 
 #### Reasoning Program Execution
 Run the following command to execute the reasoning program:
