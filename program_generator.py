@@ -5,14 +5,14 @@ from tqdm import tqdm
 import torch
 
 from prompts import Prompt_Loader
-# from utils import OpenAIModel
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria
-from huggingface_hub import login
+from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria
 
+# token to access Llama models on HF
 access_token = "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"
 
 
 class MyStoppingCriteria(StoppingCriteria):
+    """ Define stopping generation conditions. """
     def __init__(self, target_sequence, prompt, tokenizer):
         self.target_sequence = target_sequence
         self.prompt=prompt
@@ -35,7 +35,22 @@ class MyStoppingCriteria(StoppingCriteria):
         yield self
 
 class Reasoning_Program_Generator:
+    """ LLMs-based program generator module. """
+    
     def __init__(self, args):
+        """ Initialize the LLM by using Huggingface library.
+            Model is loaded with torch.bfloat16 precesision, flash attention and KV attention cache.
+            
+            Args:
+                data_path (str): path to the dataset
+                data_name (str): name of the dataset
+                model_name (str): name of the LLM
+                save_path (str): path to the output folder
+                num_programs_per_example (str): number of generated reasoning programs
+            Returns:
+                (str): Generated reasoning program
+        """
+        
         self.args = args
         self.data_path = args.data_path
         self.dataset_name = args.dataset_name
@@ -44,25 +59,34 @@ class Reasoning_Program_Generator:
         self.num_programs_per_example = args.num_programs_per_example
         
         self.gen_model = AutoModelForCausalLM.from_pretrained(args.model_name, device_map="auto", torch_dtype=torch.float16, attn_implementation='flash_attention_2')
-        # self.gen_model.generation_config.cache_implementation = "static"
-        # self.gen_model.forward = torch.compile(self.gen_model.forward, mode="reduce-overhead", fullgraph=True)
-        # self.gen_model.generate = torch.compile(self.gen_model.generate, mode="reduce-overhead", fullgraph=True)
+        self.gen_model.generation_config.cache_implementation = "static"
 
         self.tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # # call openai models
-        # self.openai_api = OpenAIModel(args.api_key, args.model_name, args.stop_words, args.max_new_tokens)
-        # self.gen_model = pipeline("text-generation",model=args.model_name, device_map="auto", model_kwargs={"torch_dtype": torch.bfloat16}, token=access_token)
-        # load prompt
         self.prompt_loader = Prompt_Loader()
 
     def update_results(self, sample, generated_text):
+        """Update generated programs.
+        A generated program is a list, with each element is a operator (sub-task).
+        
+            Args:
+                generated_text (list): Generated program
+                
+            Returns:
+        """
         program_list = [operation.strip() for operation in generated_text.split('\n')]
         # programs = [program_list]
         self.result_dict[sample['id']]['predicted_programs'].append(program_list)
 
     def batch_generate_programs(self, batch_size = 10):
+        """ Generate the reasoning program using LLMs.
+        
+            Args:
+            
+            Returns:
+        """
+        
         # create output_dir
         self.result_dict = []
         if not os.path.exists(self.save_path):
@@ -99,37 +123,14 @@ class Reasoning_Program_Generator:
             for chunk in tqdm(dataset_chunks):
                 # create prompt
                 full_prompts = [self.prompt_loader.prompt_construction(example['claim'], self.dataset_name) for example in chunk]
-                # print(full_prompts)
                 for sample, full_prompt in zip(chunk, full_prompts):
-                    # try:
-                        # output = self.openai_api.generate(full_prompt, temperature)
-                    model_input = self.tokenizer(full_prompt, return_tensors="pt").to("cuda")
-                    # print("check tokenizer", model_input)
-                    generated_ids = self.gen_model.generate(**model_input, max_new_tokens=args.max_new_tokens, temperature=temperature, stopping_criteria=MyStoppingCriteria(args.stop_words, full_prompt, self.tokenizer))
-                    # print("check generating", generated_ids)
-                    output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-
-                    self.update_results(sample, output)
-                    # except:
-                    #     print('Error in generating reasoning programs for example: ', sample['id'])
-                # try:
-                #     # run model
-                #     # batch_outputs = self.openai_api.batch_generate(full_prompts, temperature)
-                #     batch_outputs = self.gen_model(full_prompts, temperature, batch=batch_size)
-                #     print("test generate batch")
-                #     # create output
-                #     for sample, output in zip(chunk, batch_outputs):
-                #         self.update_results(sample, output)
-                # except:
-                #     # generate one by one if batch generation fails
-                #     for sample, full_prompt in zip(chunk, full_prompts):
-                #         try:
-                #             # output = self.openai_api.generate(full_prompt, temperature)
-                #             output = self.gen_model(full_prompt, te)
-                #             print("test generate single")
-                #             self.update_results(sample, output)
-                #         except:
-                #             print('Error in generating reasoning programs for example: ', sample['id'])
+                    try:
+                        model_input = self.tokenizer(full_prompt, return_tensors="pt").to("cuda")
+                        generated_ids = self.gen_model.generate(**model_input, max_new_tokens=args.max_new_tokens, temperature=temperature, stopping_criteria=MyStoppingCriteria(args.stop_words, full_prompt, self.tokenizer))
+                        output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+                        self.update_results(sample, output)
+                    except:
+                        print('Error in generating reasoning programs for example: ', sample['id'])
 
         print(f"Generated {len(result_dict)} examples.")
         # create outputs
@@ -143,6 +144,7 @@ class Reasoning_Program_Generator:
             json.dump(sorted_outputs, f, indent=2, ensure_ascii=False)
 
 def parse_args():
+    """ Receive input arguments for experiment settings."""
     parser = argparse.ArgumentParser()
     # dataset args
     parser.add_argument('--dataset_name', default='HOVER', type=str)
