@@ -94,7 +94,7 @@ class Reasoning_Program_Generator:
             os.makedirs(self.save_path)
 
         # load dataset
-        with open(self.data_path, 'r') as f:
+        with open(os.path.join(self.data_path, self.dataset_name, 'claims', 'dev.json'), 'r') as f:
             raw_dataset = json.load(f)
         
         raw_dataset = raw_dataset if self.args.num_eval_samples < 0 else raw_dataset[:self.args.num_eval_samples]
