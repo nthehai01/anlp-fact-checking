@@ -26,7 +26,7 @@ Run the following command to execute the reasoning program:
 bash run_program_execution.sh
 ```
 By default, this script will use the `google/flan-t5-large` model to execute the [generated 
-reasoning program](./results/programs/HOVER-4_N=1_meta-llama/Llama-3.1-8B-Instruct_programs_v3.json) from the `meta-llama/Llama-3.1-8B-Instruct` model. The results will be saved in the [`llama_3.1_8b_instruct_flan_t5_large.json`](./results/execution/llama_3.1_8b_instruct_flan_t5_large.json) file.
+reasoning program](./results/programs/HOVER-4_N=1_meta-llama/Llama-3.1-8B-Instruct_programs_v3.json) from the `meta-llama/Llama-3.1-8B-Instruct` model. The results will be saved in the [`llama_3.1_8b_instruct_flan_t5_large.json`](./results/executions/llama_3.1_8b_instruct_flan_t5_large.json) file.
 
 ### Results
 
