@@ -20,7 +20,14 @@ There are two main steps to use the code: Reasoning Program Generation and Reaso
 #### Reasoning Program Generation
 Run the following command to generate the reasoning program:
 ```bash
-bash program_generator.py
+python ./models/program_generator.py \ // model
+    --data_path ./datasets \
+    --dataset_name "HOVER-4" \
+    --num_programs_per_example "1" \
+    --model_name meta-llama/Meta-Llama-3-70B-Instruct\
+    --num_eval_samples "1039" \
+    --api_key "Your OpenAI API Key" \
+    --save_path ./results/programs
 ```
 
 #### Reasoning Program Execution
