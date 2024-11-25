@@ -1,4 +1,4 @@
-python ./models/program_generator.py \
+python program_generator.py \
     --data_path ./datasets \
     --dataset_name "HOVER-4" \
     --num_programs_per_example "1" \
